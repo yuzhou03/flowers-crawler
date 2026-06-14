@@ -20,6 +20,15 @@ DOC_DIR       := doc
 TEST_TARGET   := $(SRC_DIR).test_crawler
 REQUIREMENTS  := requirements.txt
 
+# Windows 终端默认使用 cp936 (GBK) 代码页，UTF-8 编码的中文 @echo
+# 会出现 "鍛戒护" 这类乱码。切换到 chcp 65001 (UTF-8) 即可解决。
+# 在 macOS / Linux 上该变量为冒号（shell 内建 no-op），行为不变。
+ifeq ($(OS),Windows_NT)
+    UTF8_SWITCH := chcp 65001 >nul 2>&1
+else
+    UTF8_SWITCH := :
+endif
+
 # ---------- 默认目标 ----------
 .DEFAULT_GOAL := help
 
@@ -31,6 +40,7 @@ REQUIREMENTS  := requirements.txt
 # 解析本文件中 "## 描述" 形式的注释并以表格形式输出，便于扩展。
 # 使用 Python 实现，确保在 Windows / macOS / Linux 行为一致（无需 awk）。
 help:  ## 展示所有可用 target 的功能说明、使用方法与参数
+	@$(UTF8_SWITCH)
 	@echo Flowers Crawler - 可用命令:
 	@echo.
 	@$(PYTHON) scripts/make_help.py $(MAKEFILE_LIST)
@@ -51,12 +61,13 @@ help:  ## 展示所有可用 target 的功能说明、使用方法与参数
 # 一键运行爬虫：先确保依赖已安装，然后调用 src/main.py。
 # 通过命令行参数自定义关键词 / 数量 / 输出路径等。
 KEYWORD      ?= rose
-N            ?= 10
+N            ?= 27
 OUT          ?= $(OUTPUT_DIR)
 SKIP_INSTALL ?= 0
 TIMEOUT      ?= 15
 
 run:  ## 一键运行爬虫（自动安装依赖，可由 KEYWORD/N/OUT 控制）
+	@$(UTF8_SWITCH)
 	@echo "[run] 关键词=$(KEYWORD) 数量=$(N) 输出=$(OUT)"
 ifeq ($(SKIP_INSTALL),0)
 	@echo "[run] 正在安装/更新依赖 ..."
@@ -68,6 +79,7 @@ endif
 # 彻底清理项目构建/运行过程中产生的临时文件、缓存与日志。
 # 使用 Python 脚本实现，确保在 Windows / macOS / Linux 行为一致。
 clean:  ## 清理 __pycache__ / .pyc / 日志 / 覆盖率 / 构建产物
+	@$(UTF8_SWITCH)
 	@echo [clean] 正在清理临时文件与编译产物 ...
 	$(PYTHON) scripts/make_clean.py .
 	@echo [clean] 如需清空已下载图片，可手动执行: rd /s /q out\_images  或  rm -rf out/*
