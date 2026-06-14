@@ -4,10 +4,12 @@
 负责解析用户输入的命令行参数，并调用爬虫核心逻辑。
 
 支持参数:
-    keyword   - 搜索关键词（必填）
-    --count   - 下载数量，默认 10
-    --output  - 存储路径，未指定时自动使用 out/<keyword的拼音>
-    --timeout - 单次请求超时时间（秒），默认 15
+    keyword            - 搜索关键词（必填）
+    --count            - 下载数量，默认 10
+    --output           - 存储路径，未指定时自动使用 out/<keyword的拼音>
+    --timeout          - 单次请求超时时间（秒），默认 15
+    --source           - 爬取来源（baidu 或 pexels），默认 baidu
+    --pexels-api-key   - Pexels 平台 API Key（也可由 PEXELS_API_KEY 环境变量提供）
 """
 
 from __future__ import annotations
@@ -30,6 +32,15 @@ DEFAULT_OUTPUT_ROOT = "out"
 
 # 拼音转换失败或库不可用时的兜底目录名
 PINYIN_FALLBACK_NAME = "flowers"
+
+# 支持的爬取来源
+SUPPORTED_SOURCES = ("baidu", "pexels")
+
+# Pexels 平台的许可声明（Pexels License）
+PEXELS_LICENSE_NOTE = (
+    "[许可] Pexels License: 完全免费 / 无水印 / 可商用 / 无需署名 "
+    "(https://www.pexels.com/license/)"
+)
 
 
 # ----------------------------------------------------------------------
@@ -74,6 +85,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="单张图片下载失败时的重试次数，默认 3。",
     )
+    parser.add_argument(
+        "--source",
+        type=str,
+        choices=SUPPORTED_SOURCES,
+        default="baidu",
+        help=(
+            "爬取来源：baidu（百度图片搜索）或 pexels（Pexels 官方 API），"
+            "默认 baidu。"
+        ),
+    )
+    parser.add_argument(
+        "--pexels-api-key",
+        type=str,
+        default=None,
+        help=(
+            "Pexels 平台 API Key。--source=pexels 时必填，"
+            "可通过此参数或环境变量 PEXELS_API_KEY 传入。"
+        ),
+    )
     return parser
 
 
@@ -107,6 +137,17 @@ def parse_args(argv=None, interactive: bool = True) -> argparse.Namespace:
         parser.error("--timeout 必须大于 0。")
     if args.max_retries < 0:
         parser.error("--max-retries 不能为负数。")
+    if args.source not in SUPPORTED_SOURCES:
+        parser.error(
+            f"--source 必须是以下之一: {', '.join(SUPPORTED_SOURCES)}"
+        )
+    if args.source == "pexels" and not (
+        args.pexels_api_key or os.environ.get("PEXELS_API_KEY")
+    ):
+        parser.error(
+            "--source=pexels 时必须通过 --pexels-api-key "
+            "或环境变量 PEXELS_API_KEY 提供 API Key。"
+        )
     return args
 
 
@@ -178,6 +219,36 @@ def _resolve_output_dir(output: Optional[str], keyword: str) -> str:
 # ----------------------------------------------------------------------
 # 主入口
 # ----------------------------------------------------------------------
+def _build_crawler(args, keyword: str, output_dir: str):
+    """根据 ``--source`` 选择并构造爬虫实例。
+
+    Args:
+        args: 已校验的命令行参数。
+        keyword: 已清理过的安全关键词。
+        output_dir: 已解析的输出目录。
+
+    Returns:
+        实现了 ``crawl(count)`` 接口的爬虫实例。
+    """
+    if args.source == "pexels":
+        # 延迟导入，避免未使用 Pexels 时加载其依赖
+        from crawler_pexels import PexelsImageCrawler
+        print(PEXELS_LICENSE_NOTE)
+        return PexelsImageCrawler(
+            keyword=keyword,
+            output_dir=output_dir,
+            api_key=args.pexels_api_key,
+            timeout=args.timeout,
+            max_retries=args.max_retries,
+        )
+    return BaiduImageCrawler(
+        keyword=keyword,
+        output_dir=output_dir,
+        timeout=args.timeout,
+        max_retries=args.max_retries,
+    )
+
+
 def main(argv=None) -> int:
     """主入口，返回进程退出码。"""
     args = parse_args(argv)
@@ -192,12 +263,7 @@ def main(argv=None) -> int:
         print(f"[错误] 创建输出目录失败 '{output_dir}': {exc}")
         return 4
 
-    crawler = BaiduImageCrawler(
-        keyword=safe_keyword,
-        output_dir=output_dir,
-        timeout=args.timeout,
-        max_retries=args.max_retries,
-    )
+    crawler = _build_crawler(args, safe_keyword, output_dir)
 
     try:
         downloaded = crawler.crawl(count=args.count)

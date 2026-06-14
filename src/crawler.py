@@ -90,6 +90,7 @@ class ImageQualityStats:
         "rejected_resolution_too_low",
         "rejected_download_fail",
         "successful_downloads",
+        "cache_hits",
         "total_bytes",
         "file_sizes",
         "resolutions",
@@ -114,6 +115,8 @@ class ImageQualityStats:
         self.rejected_download_fail: int = 0
         # 成功下载并落盘的数量
         self.successful_downloads: int = 0
+        # 命中本地缓存、未真正发起下载请求的数量
+        self.cache_hits: int = 0
         # 成功下载图片的字节总数
         self.total_bytes: int = 0
         # 所有成功图片的文件大小（字节）
@@ -155,6 +158,7 @@ class ImageQualityStats:
             "rejected_resolution_too_low": self.rejected_resolution_too_low,
             "rejected_download_fail": self.rejected_download_fail,
             "successful_downloads": self.successful_downloads,
+            "cache_hits": self.cache_hits,
             "total_bytes": self.total_bytes,
             "average_size_bytes": self.average_size,
             "min_size_bytes": min(self.file_sizes) if self.file_sizes else 0,
@@ -167,10 +171,11 @@ class ImageQualityStats:
         """生成可打印的对比摘要。"""
         d = self.to_dict()
         lines = [
-            "[质量统计] 候选 item: {total}, 接受 URL: {acc}, 成功下载: {ok}".format(
+            "[质量统计] 候选 item: {total}, 接受 URL: {acc}, 成功下载: {ok}, 缓存命中: {cache}".format(
                 total=d["total_candidates"],
                 acc=d["accepted_urls"],
                 ok=d["successful_downloads"],
+                cache=d["cache_hits"],
             ),
             (
                 "[质量统计] 文件大小 - 平均: {avg:.1f}KB, 最小: {mn:.1f}KB, 最大: {mx:.1f}KB"
