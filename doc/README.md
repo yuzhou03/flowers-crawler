@@ -6,6 +6,7 @@
 
 - 支持通过命令行参数指定花的关键词（如 `玫瑰`、`sunflower` 等）。
 - 抓取**高清原图**并按 `{关键词}_{序号}.{扩展名}` 命名保存到本地目录。
+- **未指定存储路径时自动使用拼音子目录**：例如 `python src\main.py 荷花` 会把图片保存到 `out/hehua/`；`python src\main.py 牡丹` 会保存到 `out/mudan/`。
 - 内置请求分页、失败重试与简单的反爬规避（合理 UA / Referer / 请求间隔）。
 - 关键词与下载数量均做合法性校验，下载过程对非图片响应进行过滤。
 - 提供 `BatchCrawler.batch_crawl` 便捷函数，便于在其它 Python 脚本中直接调用。
@@ -61,10 +62,12 @@ pip install -r requirements.txt
 ### 5.1 命令行方式
 
 ```powershell
-# 基础用法：在 out/ 目录下抓取 10 张玫瑰图片
-python src\main.py 玫瑰
+# 基础用法：自动以拼音命名子目录
+python src\main.py 玫瑰          # 保存到 out/meigui/
+python src\main.py 荷花          # 保存到 out/hehua/
+python src\main.py sunflower     # 保存到 out/sunflower/
 
-# 指定数量与输出目录
+# 指定数量与自定义输出目录
 python src\main.py 牡丹 -n 30 -o D:\data\peony
 
 # 自定义超时与重试
@@ -73,15 +76,16 @@ python src\main.py sunflower -n 50 -o out --timeout 20 --max-retries 5
 
 参数说明：
 
-| 参数            | 说明                              | 默认值 |
-|----------------|-----------------------------------|--------|
-| `keyword`      | 必填，搜索关键词（花的名称）       | 无     |
-| `-n/--count`   | 下载数量                           | 10     |
-| `-o/--output`  | 存储路径                           | `out/` |
-| `--timeout`    | 单次 HTTP 超时时间（秒）           | 15     |
-| `--max-retries`| 单张图片下载失败时的重试次数       | 3      |
+| 参数            | 说明                                                       | 默认值            |
+|----------------|------------------------------------------------------------|-------------------|
+| `keyword`      | 必填，搜索关键词（花的名称）                                 | 无                |
+| `-n/--count`   | 下载数量                                                   | 10                |
+| `-o/--output`  | 存储路径。未指定时自动使用 `out/<keyword 的拼音>`           | `out/<拼音>/`     |
+| `--timeout`    | 单次 HTTP 超时时间（秒）                                    | 15                |
+| `--max-retries`| 单张图片下载失败时的重试次数                                | 3                 |
 
-> 提示：执行结束后，图片位于 `out/{关键词}_{序号}.jpg` 等文件中。
+> 提示：执行结束后，图片位于 `out/<拼音>/{关键词}_{序号}.jpg` 等文件中。
+> 例如 `python src\main.py 荷花` 执行后，文件路径形如 `out/hehua/荷花_0001.jpg`。
 
 ### 5.2 作为模块调用
 

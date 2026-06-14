@@ -154,7 +154,7 @@ class CliArgParseTests(unittest.TestCase):
         ns = self.parser.parse_args(["rose"])
         self.assertEqual(ns.keyword, "rose")
         self.assertEqual(ns.count, 10)
-        self.assertEqual(ns.output, "out")
+        self.assertIsNone(ns.output)
         self.assertEqual(ns.timeout, 15)
         self.assertEqual(ns.max_retries, 3)
 
@@ -180,6 +180,122 @@ class CliArgParseTests(unittest.TestCase):
     def test_parse_args_rejects_negative_timeout(self) -> None:
         with self.assertRaises(SystemExit):
             cli_main.parse_args(["rose", "--timeout", "-1"], interactive=False)
+
+
+# ----------------------------------------------------------------------
+# 拼音转换与输出目录解析测试
+# ----------------------------------------------------------------------
+class PinyinAndPathTests(unittest.TestCase):
+    """针对 _keyword_to_pinyin / _normalize_pinyin / _resolve_output_dir 的测试。"""
+
+    def test_keyword_to_pinyin_chinese(self) -> None:
+        self.assertEqual(cli_main._keyword_to_pinyin("荷花"), "hehua")
+        self.assertEqual(cli_main._keyword_to_pinyin("玫瑰"), "meigui")
+        self.assertEqual(cli_main._keyword_to_pinyin("向日葵"), "xiangrikui")
+
+    def test_keyword_to_pinyin_keeps_ascii_lowercased(self) -> None:
+        self.assertEqual(cli_main._keyword_to_pinyin("Sunflower"), "sunflower")
+        self.assertEqual(cli_main._keyword_to_pinyin("ROSE"), "rose")
+
+    def test_keyword_to_pinyin_mixed(self) -> None:
+        # 中文部分转拼音、英文部分保留并小写、空格转为下划线
+        result = cli_main._keyword_to_pinyin("红玫瑰 Rose")
+        self.assertIn("hongmeigui", result)
+        self.assertIn("rose", result)
+        self.assertNotIn(" ", result)
+        self.assertEqual(result, result.lower())
+
+    def test_keyword_to_pinyin_empty_fallback(self) -> None:
+        self.assertEqual(cli_main._keyword_to_pinyin(""), "flowers")
+        self.assertEqual(cli_main._keyword_to_pinyin("   "), "flowers")
+        self.assertEqual(cli_main._keyword_to_pinyin(None), "flowers")  # type: ignore[arg-type]
+
+    def test_keyword_to_pinyin_handles_pypinyin_failure(self) -> None:
+        """当 pypinyin 抛异常时应降级为原文本归一化结果。"""
+        with mock.patch("pypinyin.lazy_pinyin", side_effect=RuntimeError("boom")):
+            result = cli_main._keyword_to_pinyin("荷花")
+        # 降级路径：原文本 "荷花" 经过 _normalize 后只剩空，回退为 "flowers"
+        self.assertEqual(result, "flowers")
+        self.assertTrue(result)
+        self.assertEqual(result, result.lower())
+
+    def test_keyword_to_pinyin_handles_missing_module(self) -> None:
+        """当 pypinyin 未安装时应走 ImportError 兜底分支，不抛异常。"""
+        with mock.patch.dict("sys.modules", {"pypinyin": None}):
+            # 重新触发内部 import 逻辑
+            result = cli_main._keyword_to_pinyin("sunflower")
+        # 兜底路径：原文本仅做 normalize，结果为 "sunflower"
+        self.assertEqual(result, "sunflower")
+
+    def test_normalize_pinyin(self) -> None:
+        self.assertEqual(cli_main._normalize_pinyin("He Hua"), "he_hua")
+        self.assertEqual(cli_main._normalize_pinyin("he--hua"), "he--hua")
+        # 连续下划线会被压缩、但单下划线作为分隔符保留
+        self.assertEqual(cli_main._normalize_pinyin("__he__hua__"), "he_hua")
+        self.assertEqual(cli_main._normalize_pinyin("中文"), "flowers")
+        self.assertEqual(cli_main._normalize_pinyin(""), "flowers")
+        self.assertEqual(cli_main._normalize_pinyin("abc123-OK"), "abc123-ok")
+
+    def test_resolve_output_dir_default_uses_pinyin(self) -> None:
+        # 未传 output 时使用 out/<拼音>
+        self.assertEqual(
+            cli_main._resolve_output_dir(None, "荷花"),
+            os.path.join("out", "hehua"),
+        )
+        self.assertEqual(
+            cli_main._resolve_output_dir("", "荷花"),
+            os.path.join("out", "hehua"),
+        )
+        self.assertEqual(
+            cli_main._resolve_output_dir("   ", "荷花"),
+            os.path.join("out", "hehua"),
+        )
+
+    def test_resolve_output_dir_user_specified(self) -> None:
+        # 显式传值时直接使用用户路径
+        self.assertEqual(
+            cli_main._resolve_output_dir("mydir", "荷花"), "mydir"
+        )
+        self.assertEqual(
+            cli_main._resolve_output_dir("  custom  ", "荷花"), "custom"
+        )
+        self.assertEqual(
+            cli_main._resolve_output_dir("D:/data/peony", "牡丹"),
+            "D:/data/peony",
+        )
+
+    def test_main_creates_pinyin_subdir_under_out(self) -> None:
+        """main() 在未指定 --output 时应自动创建 out/<拼音> 目录。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            # 切换到临时目录作为 cwd
+            old_cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                # 通过 mock 让爬虫不下任何图片
+                with mock.patch(
+                    "crawler.requests.Session.get",
+                    return_value=_make_search_response([]),
+                ):
+                    rc = cli_main.main(["荷花", "-n", "1"])
+                # 退出码 3 表示 "没有下载到任何图片"——这是预期的
+                self.assertEqual(rc, 3)
+                # 验证目录被自动创建
+                expected = os.path.join(tmp, "out", "hehua")
+                self.assertTrue(os.path.isdir(expected))
+            finally:
+                os.chdir(old_cwd)
+
+    def test_main_uses_explicit_output(self) -> None:
+        """显式 --output 时不应创建 out/<拼音>。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "myflowers")
+            with mock.patch(
+                "crawler.requests.Session.get",
+                return_value=_make_search_response([]),
+            ):
+                rc = cli_main.main(["荷花", "-n", "1", "-o", target])
+            self.assertEqual(rc, 3)
+            self.assertTrue(os.path.isdir(target))
 
 
 # ----------------------------------------------------------------------
