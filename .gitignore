@@ -1,0 +1,6 @@
+# dir: output directory
+out/
+
+
+# temp directory
+__pycache__/
