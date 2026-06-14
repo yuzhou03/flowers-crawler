@@ -83,3 +83,9 @@ test:  ## 运行单元测试与集成测试（集成测试默认 skip）
 # ---------- all ----------
 # 等价于 install + test，可与其他 target 并行调度。
 all: install test  ## 依次执行 install 和 test
+
+
+# alias
+h: help
+cl: clean
+r: run
