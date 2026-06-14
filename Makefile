@@ -15,7 +15,7 @@
 PYTHON        ?= python
 PIP           ?= $(PYTHON) -m pip
 SRC_DIR       := src
-OUTPUT_DIR    := out
+OUTPUT_DIR    := ""
 DOC_DIR       := doc
 TEST_TARGET   := $(SRC_DIR).test_crawler
 REQUIREMENTS  := requirements.txt
